@@ -1,0 +1,2 @@
+-record(monitor, {stations}).
+-record(station, {name, location, measurements}).

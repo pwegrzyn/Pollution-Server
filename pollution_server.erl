@@ -4,7 +4,7 @@
 
 start() ->
     io:format("Spawning a new server instance...~n"),
-    register(monitorServer, spawn(pollution_server, init, [])).
+    register(monitorServer, spawn_link(pollution_server, init, [])).
 
 stop() ->
     io:format("Stopping the server...~n"),
@@ -12,7 +12,8 @@ stop() ->
 
 init() ->
     io:format("Server is starting...~n"),
-    loop(pollution:createMonitor()).
+    InitialMonitor = pollution:createMonitor(),
+    loop(InitialMonitor).
 
  %% main server loop
  loop(Monitor) ->
@@ -70,7 +71,11 @@ init() ->
             Pid ! {reply, Monitor},
             loop(Monitor);
         {request, Pid, stop} ->
-            Pid ! {reply, ok}
+            Pid ! {reply, ok};
+        {request, Pid, crash} ->
+            1 / 0,
+            Pid ! {reply, ok},
+            loop(Monitor)
     end.
 
 %% client
@@ -104,3 +109,6 @@ getMaximumGrowthTime(Type) ->
 
 getMonitor() ->
     call(getMonitor, []).
+
+crash() ->
+    call(crash, []).

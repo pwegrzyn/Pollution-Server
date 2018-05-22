@@ -50,15 +50,15 @@ addValue(StIden, Time, Type, Val, Monitor) ->
             {err, unknowError};
         {found, Found} ->
             M = Found#station.measurements,
-            case catch(maps:get({Time, Type}, M)) of
-                {'EXIT', _} ->
+            case maps:is_key({Time, Type}, M) of
+                false ->
                     NewM = M#{{Time, Type} => Val},
                     NewStation = Found#station{measurements=NewM},
                     NotEqual = fun (Rec) -> not (Rec =:= Found) end,
                     W_o_old = lists:filter(NotEqual, Monitor#monitor.stations),
                     NewMonitor = #monitor{stations=[NewStation | W_o_old]},
                     NewMonitor;
-                _ ->
+                true ->
                     {err, measurementAlreadyExists}
             end
     end.
@@ -72,10 +72,10 @@ removeValue(StIden, Time, Type, Monitor) ->
             {err, unknowError};
         {found, Found} ->
             M = Found#station.measurements,
-            case catch(maps:get({Time, Type}, M)) of
-                {'EXIT', _} ->
+            case maps:is_key({Time, Type}, M) of
+                false ->
                     Monitor;
-                _ ->
+                true ->
                     NotEqualMap = fun(K,_) -> not (K == {Time, Type}) end,
                     NewM = maps:filter(NotEqualMap, M),
                     NewStation = Found#station{measurements=NewM},
@@ -95,11 +95,11 @@ getOneValue(Type, Time, StIden, Monitor) ->
             {err, unknowError};
         {found, Found} ->
             M = Found#station.measurements,
-            case catch(maps:get({Time, Type}, M)) of
-                {'EXIT', _} ->
+            case maps:is_key({Time, Type}, M) of
+                false ->
                     {err, noMeasurementFound};
-                Val ->
-                    Val
+                true ->
+                    maps:get({Time, Type}, M)
             end
     end.
 
@@ -136,7 +136,10 @@ getMaximumGrowthTime(Type, Monitor) ->
         Monitor#monitor.stations)),
     {Min, Max} = go(M, maps:new(), maps:new()),
     MaxGrowths = generateMaxGrowths(maps:keys(Min), Min, Max, maps:new()),
-    fst(max2(maps:to_list(MaxGrowths))).
+    case MaxGrowths of
+        notFound -> {err, lackingInformation};
+        _        -> fst(max2(maps:to_list(MaxGrowths)))
+    end.
     
 go([], Min, Max) ->
     {Min, Max};
@@ -146,31 +149,32 @@ go([H | T], Min, Max) ->
     go(T, NewMin, NewMax).
 
 updateMax({{{Day, {Hour, _, _}}, _}, Value}, Max) ->
-        case (maps:is_key({Hour, Day}, Max)) of
-            true -> case (Value >= maps:get({Hour, Day}, Max)) of 
-                        true -> maps:update({Hour, Day}, Value, Max);
-                        false -> Max
-                    end;
-            false -> maps:put({Hour, Day}, Value, Max)
-        end.
+    case (maps:is_key({Hour, Day}, Max)) of
+        true -> case (Value > maps:get({Hour, Day}, Max)) of 
+                    true -> maps:update({Hour, Day}, Value, Max);
+                    false -> Max
+                end;
+        false -> maps:put({Hour, Day}, Value, Max)
+    end.
 
 updateMin({{{Day, {Hour, _, _}}, _}, Value}, Min) ->
-        case (maps:is_key({Hour, Day}, Min)) of
-            true -> case (Value =< maps:get({Hour, Day}, Min)) of 
-                        true -> maps:update({Hour, Day}, Value, Min);
-                        false -> Min
-                    end;
-            false -> maps:put({Hour, Day}, Value, Min)
-        end.
+    case (maps:is_key({Hour, Day}, Min)) of
+        true -> case (Value < maps:get({Hour, Day}, Min)) of 
+                    true -> maps:update({Hour, Day}, Value, Min);
+                    false -> Min
+                end;
+        false -> maps:put({Hour, Day}, Value, Min)
+    end.
 
 generateMaxGrowths([], _, _, Curr) -> Curr;
-generateMaxGrowths(_, #{}, _, _) -> notFound;
-generateMaxGrowths(_, _, #{}, _) -> notFound;
+generateMaxGrowths(_, Map, _, _) when map_size(Map) == 0 -> notFound;
+generateMaxGrowths(_, _, Map, _) when map_size(Map) == 0 -> notFound;
 generateMaxGrowths([H | T], Min, Max, Curr) ->
-    generateMaxGrowths(T, Min, Max, maps:put(H, 
-        abs(maps:get(H, Max) - maps:get(H, Min)), Curr)).
+    NewMap = maps:put(H, abs(maps:get(H, Max) - maps:get(H, Min)), Curr),
+    generateMaxGrowths(T, Min, Max, NewMap).
 
-max2([H|T]) -> max2(T, H).
+max2([H|T]) -> max2(T, H);
+max2([]) -> {{err, lackingInformation},error}.
 max2([{Fst_H,Snd_H}|T],{_,Snd_MAX}) when Snd_H>Snd_MAX->max2(T, {Fst_H,Snd_H});
 max2([_|T], Max) -> max2(T, Max);
 max2([], Max) -> Max.

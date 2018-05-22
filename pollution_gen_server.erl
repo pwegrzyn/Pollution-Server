@@ -16,6 +16,15 @@ stop() ->
 getMonitor() ->
     gen_server:call(pollution_gen_server, {getMonitor}).
 
+getStationMean(StIden, Type) ->
+    gen_server:call(pollution_gen_server, {getStationMean, StIden, Type}).
+
+getDailyMean(Day, Type) ->
+    gen_server:call(pollution_gen_server, {getDailyMean, Day, Type}).
+
+getMaximumGrowthTime(Type) ->
+    gen_server:call(pollution_gen_server, {getMaximumGrowthTime, Type}).
+
 addStation(Name, Coords) ->
     gen_server:cast(pollution_gen_server, {addStation, Name, Coords}).
 
@@ -40,6 +49,15 @@ handle_call({getMonitor}, _From, Monitor) ->
     {reply, Monitor, Monitor};
 handle_call({getOneValue, Type, Time, StIden}, _From, Monitor) ->
     Found = pollution:getOneValue(Type, Time, StIden),
+    {reply, Found, Monitor};
+handle_call({getStationMean, StIden, Type}, _From, Monitor) ->
+    Found = pollution:getStationMean(Type, StIden, Monitor),
+    {reply, Found, Monitor};
+handle_call({getDailyMean, Day, Type}, _From, Monitor) ->
+    Found = pollution:getDailyMean(Type, Day, Monitor),
+    {reply, Found, Monitor};
+handle_call({getMaximumGrowthTime, Type}, _From, Monitor) ->
+    Found = pollution:getMaximumGrowthTime(Type, Monitor),
     {reply, Found, Monitor}.
 
 handle_cast({addStation, Name, Coords}, Monitor) ->
@@ -49,7 +67,11 @@ handle_cast({crash}, Monitor) ->
     Rip = 1/0,
     {noreply, Monitor};
 handle_cast({addValue, StIden, Time, Type, Val}, Monitor) ->
-    UpdatedMonitor = pollution:addValue(StIden, Time, Type, Val, Monitor),
-    {noreply, UpdatedMonitor};
+    Res = pollution:addValue(StIden, Time, Type, Val, Monitor),
+    case Res of
+            {err, nonExistentStation} -> {noreply, Monitor};
+            {err, measurementAlreadyExists} -> {noreply, Monitor};
+            UpdatedMonitor -> {noreply, UpdatedMonitor}
+    end;
 handle_cast(stop, Monitor) ->
     {stop, normal, Monitor}.
